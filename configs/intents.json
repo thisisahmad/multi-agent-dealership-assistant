@@ -1,0 +1,74 @@
+{
+  "intents": [
+    {
+      "intent_id": "service_booking",
+      "description": "Book a service appointment",
+      "keywords": [
+        "service",
+        "repair",
+        "maintenance",
+        "fix",
+        "book service",
+        "book",
+        "booking",
+        "appointment",
+        "appoinment",
+        "apointment",
+        "appoitment",
+        "book appointment",
+        "book an appointment",
+        "book a service",
+        "book service appointment",
+        "want appointment",
+        "want an appointment",
+        "want a service",
+        "want service",
+        "need appointment",
+        "need service",
+        "meeting"
+      ],
+      "form": "service_booking"
+    },
+    {
+      "intent_id": "test_drive",
+      "description": "Book a test drive",
+      "keywords": [
+        "test drive",
+        "testdrive",
+        "try car",
+        "drive car",
+        "book test drive",
+        "book a test drive",
+        "schedule test drive"
+      ],
+      "form": "test_drive"
+    },
+    {
+      "intent_id": "general_enquiry",
+      "description": "General information request",
+      "keywords": ["information", "info", "tell me", "what", "how", "question"],
+      "form": null
+    },
+    {
+      "intent_id": "date_time_query",
+      "description": "Questions about dates, times, or business hours",
+      "keywords": ["when", "what day", "what time", "hours", "open", "closed"],
+      "form": null
+    },
+    {
+      "intent_id": "human_handoff",
+      "description": "Request to speak with human agent",
+      "keywords": ["human", "agent", "person", "speak to", "talk to"],
+      "form": null
+    },
+    {
+      "intent_id": "lead_capture",
+      "description": "Capture customer contact information",
+      "keywords": ["contact", "email", "phone", "interested", "follow up"],
+      "form": null
+    }
+  ],
+  "reconfirmation_required": false,
+  "reconfirmation_template": ""
+}
+

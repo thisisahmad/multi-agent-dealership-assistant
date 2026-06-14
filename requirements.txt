@@ -1,0 +1,11 @@
+streamlit
+pytz
+numpy
+faiss-cpu
+pdfplumber
+python-pptx
+python-dotenv
+openai
+openai-agents
+PyMuPDF
+python-dateutil

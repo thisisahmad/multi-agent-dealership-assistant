@@ -1,0 +1,11 @@
+{
+  "default_dealer": null,
+  "dealers": {},
+  "kb_isolation": {
+    "strict": true,
+    "one_dealer_at_a_time": true,
+    "no_mixing": true,
+    "auto_detect": true,
+    "note": "Dealers are auto-detected from filenames in Data/ folder. No hardcoded dealer names. Add any company PDF files and they will be auto-detected."
+  }
+}

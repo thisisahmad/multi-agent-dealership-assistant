@@ -1,0 +1,57 @@
+{
+  "form_id": "service_booking",
+  "form_name": "Service Booking",
+  "required_fields": [
+    {
+      "field_id": "vehicle_make_model",
+      "field_name": "Vehicle Make and Model",
+      "field_type": "text",
+      "validation": "not_empty",
+      "prompt": "What is the make and model of your vehicle?",
+      "order": 1
+    },
+    {
+      "field_id": "preferred_date",
+      "field_name": "Preferred Date",
+      "field_type": "date",
+      "validation": "date_format",
+      "prompt": "What date would you like to book your service?",
+      "order": 2
+    },
+    {
+      "field_id": "preferred_time",
+      "field_name": "Preferred Time",
+      "field_type": "time",
+      "validation": "time_format",
+      "prompt": "What time would you prefer?",
+      "order": 3
+    },
+    {
+      "field_id": "customer_name",
+      "field_name": "Customer Name",
+      "field_type": "text",
+      "validation": "not_empty",
+      "prompt": "What name should we put the booking under?",
+      "order": 4
+    },
+    {
+      "field_id": "phone",
+      "field_name": "Phone Number",
+      "field_type": "phone",
+      "validation": "uk_phone",
+      "prompt": "What is your phone number?",
+      "order": 5
+    }
+  ],
+  "optional_fields": [
+    {
+      "field_id": "email",
+      "field_name": "Email",
+      "field_type": "email",
+      "validation": "email_format",
+      "prompt": "What is your email address? (optional)",
+      "order": 6
+    }
+  ],
+  "confirmation_template": "Please confirm your service booking:\n- Vehicle: {vehicle_make_model}\n- Date: {preferred_date}\n- Time: {preferred_time}\n- Name: {customer_name}\n- Phone: {phone}"
+}

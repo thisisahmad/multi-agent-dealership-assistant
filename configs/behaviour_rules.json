@@ -1,0 +1,33 @@
+{
+  "conversation_rules": {
+    "one_question_at_a_time": true,
+    "no_combined_questions": true,
+    "deterministic_interaction": true,
+    "reconfirmation_required": false,
+    "strict_rag_grounding": true
+  },
+  "response_guidelines": {
+    "knowledge_agent": {
+      "if_not_in_kb": "This information is not available in the knowledge base.",
+      "no_hallucinations": true,
+      "cite_sources": false
+    },
+    "form_filling": {
+      "one_field_per_message": true,
+      "wait_for_answer": true,
+      "no_multiple_fields": true
+    },
+    "validation": {
+      "confirm_before_finalizing": true,
+      "show_missing_fields": true,
+      "validate_formats": true
+    }
+  },
+  "performance": {
+    "use_caching": true,
+    "avoid_unnecessary_handoffs": true,
+    "short_prompts": true,
+    "call_tools_only_when_needed": true
+  }
+}
+
