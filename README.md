@@ -11,6 +11,14 @@ It combines dealer-specific knowledge base search, natural-language booking flow
 
 ---
 
+## 🖼️ UI Preview
+
+![Car Dealership AI Assistant UI Preview](docs/app-preview.png)
+
+Premium dark **liquid glass** interface with dealer selection, knowledge base controls, and conversational chat.
+
+---
+
 ## ✨ Highlights
 
 - 🧠 **Multi-agent orchestration** for routing user messages to the right workflow.

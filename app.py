@@ -29,10 +29,10 @@ st.markdown(
 
     :root {
         --glass: rgba(255, 255, 255, 0.08);
-        --glass-border: rgba(255, 255, 255, 0.16);
+        --glass-border: rgba(255, 255, 255, 0.14);
         --text-soft: rgba(255, 255, 255, 0.72);
-        --accent: #7c3aed;
-        --accent-2: #06b6d4;
+        --accent: #d97706;
+        --accent-2: #059669;
     }
 
     html, body, [class*="css"] {
@@ -40,15 +40,15 @@ st.markdown(
     }
 
     .stApp {
-        color: #f8fafc;
+        color: #fafaf9;
         background:
-            radial-gradient(circle at top left, rgba(124, 58, 237, 0.35), transparent 34rem),
-            radial-gradient(circle at top right, rgba(6, 182, 212, 0.24), transparent 30rem),
-            linear-gradient(135deg, #050816 0%, #0b1020 45%, #111827 100%);
+            radial-gradient(circle at top left, rgba(217, 119, 6, 0.32), transparent 34rem),
+            radial-gradient(circle at top right, rgba(5, 150, 105, 0.22), transparent 30rem),
+            linear-gradient(135deg, #0c0a09 0%, #14100d 45%, #1c1917 100%);
     }
 
     section[data-testid="stSidebar"] {
-        background: rgba(10, 15, 30, 0.62);
+        background: rgba(20, 14, 10, 0.68);
         border-right: 1px solid var(--glass-border);
         backdrop-filter: blur(22px);
     }
@@ -61,7 +61,7 @@ st.markdown(
         font-size: clamp(2.2rem, 4vw, 4rem) !important;
         line-height: 1.05 !important;
         letter-spacing: -0.06em;
-        background: linear-gradient(90deg, #ffffff 0%, #c4b5fd 45%, #67e8f9 100%);
+        background: linear-gradient(90deg, #ffffff 0%, #fcd34d 42%, #6ee7b7 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
     }
@@ -81,7 +81,7 @@ st.markdown(
     }
 
     div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {
-        background: linear-gradient(135deg, rgba(124, 58, 237, 0.22), rgba(6, 182, 212, 0.10));
+        background: linear-gradient(135deg, rgba(217, 119, 6, 0.22), rgba(5, 150, 105, 0.12));
     }
 
     .stAlert, div[data-testid="stExpander"], div[data-testid="stInfo"] {
@@ -97,14 +97,14 @@ st.markdown(
         border-radius: 16px;
         color: white;
         background: linear-gradient(135deg, var(--accent), var(--accent-2));
-        box-shadow: 0 14px 32px rgba(6, 182, 212, 0.2);
+        box-shadow: 0 14px 32px rgba(217, 119, 6, 0.24);
         font-weight: 700;
         transition: transform 160ms ease, box-shadow 160ms ease;
     }
 
     .stButton > button:hover {
         transform: translateY(-1px);
-        box-shadow: 0 18px 42px rgba(124, 58, 237, 0.28);
+        box-shadow: 0 18px 42px rgba(5, 150, 105, 0.3);
     }
 
     div[data-testid="stChatInput"] {
@@ -139,9 +139,9 @@ st.markdown(
         margin: 0.25rem 0.35rem 0.25rem 0;
         padding: 0.45rem 0.7rem;
         border-radius: 999px;
-        color: #dbeafe;
-        background: rgba(96, 165, 250, 0.12);
-        border: 1px solid rgba(147, 197, 253, 0.22);
+        color: #fde68a;
+        background: rgba(217, 119, 6, 0.14);
+        border: 1px solid rgba(252, 211, 77, 0.28);
         font-size: 0.82rem;
         font-weight: 700;
     }

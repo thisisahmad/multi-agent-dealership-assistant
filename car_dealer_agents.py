@@ -49,8 +49,9 @@ if not api_key:
 client = OpenAI(api_key=api_key)
 
 EMBED_MODEL = "text-embedding-3-small"
-GEN_MODEL = os.getenv("OPENAI_MODEL", "gpt-5")
-TEMPORAL_MODEL = os.getenv("OPENAI_TEMPORAL_MODEL", GEN_MODEL)
+FAST_MODEL = os.getenv("OPENAI_FAST_MODEL", "gpt-4o-mini")
+GEN_MODEL = os.getenv("OPENAI_MODEL", FAST_MODEL)
+TEMPORAL_MODEL = os.getenv("OPENAI_TEMPORAL_MODEL", FAST_MODEL)
 CHUNK_SIZE = 2600
 OVERLAP = 300
 TOP_K = 3  # Reduced for faster search
@@ -60,21 +61,30 @@ AGENT_LOG: list[dict] = []  # collected per-run
 # Performance optimization: In-memory cache for FAISS indices and chunks
 _FAISS_CACHE: dict[str, tuple] = {}  # {dealer_name: (index, chunks)}
 _EMBEDDING_CACHE: dict[str, np.ndarray] = {}  # {text: embedding}
+_CONFIG_CACHE: dict[str, dict] = {}
+_FORM_CACHE: dict[str, dict] = {}
 
 # Dealer context for RAG
 _CURRENT_DEALER_NAME: str = None
 
 # Form state management
 _FORM_STATES: dict[str, dict] = {}  # {session_id: {form_id, fields, current_field}}
+_HANDOFF_STATE: dict[str, dict] = {}  # {session_id: {awaiting_details: bool}}
 
 
 def load_config(config_name: str) -> dict:
-    """Load JSON config file."""
+    """Load JSON config file with in-memory caching."""
+    if config_name in _CONFIG_CACHE:
+        return _CONFIG_CACHE[config_name]
+
     config_path = os.path.join("configs", config_name)
     if os.path.exists(config_path):
         with open(config_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+            _CONFIG_CACHE[config_name] = json.load(f)
+            return _CONFIG_CACHE[config_name]
+
+    _CONFIG_CACHE[config_name] = {}
+    return _CONFIG_CACHE[config_name]
 
 
 def log_event(agent: str, message: str):
@@ -683,7 +693,7 @@ def answer_knowledge_query_logic(query: str, dealer_name: str = None) -> str:
     log_event("Knowledge", f"Retrieved {len(results)} chunks for query")
 
     response = client.chat.completions.create(
-        model=GEN_MODEL,
+        model=FAST_MODEL,
         temperature=0.0,
         max_tokens=400,
         messages=[
@@ -787,6 +797,55 @@ def normalize_human_date_logic(date_text: str, tz: str = "Europe/London") -> Dic
     """Normalize natural-language dates like 'next week Sunday' or '20 June'."""
     now, now_label = _current_time_context(tz)
 
+    def _normalize_date_local() -> Optional[Dict[str, Any]]:
+        normalized = date_text.lower().strip()
+        days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        today_index = days_of_week.index(now.strftime("%A"))
+
+        if normalized in {"today", "tomorrow"}:
+            target = now if normalized == "today" else now + timedelta(days=1)
+            return {
+                "valid": True,
+                "iso_date": target.strftime("%Y-%m-%d"),
+                "full_date": target.strftime("%A, %d %B %Y"),
+                "display_date": target.strftime("%A, %d %B %Y"),
+            }
+
+        for i, day in enumerate(days_of_week):
+            if day.lower() in normalized:
+                days_ahead = (i - today_index) % 7
+                if "next week" in normalized:
+                    days_ahead += 7 if days_ahead != 0 else 7
+                elif normalized.startswith("next ") or days_ahead == 0:
+                    days_ahead = days_ahead or 7
+
+                target = now + timedelta(days=days_ahead)
+                return {
+                    "valid": True,
+                    "iso_date": target.strftime("%Y-%m-%d"),
+                    "full_date": target.strftime("%A, %d %B %Y"),
+                    "display_date": target.strftime("%A, %d %B %Y"),
+                }
+
+        try:
+            from dateutil import parser
+
+            target = parser.parse(date_text, default=now)
+            if target.date() < now.date():
+                target = target.replace(year=target.year + 1)
+            return {
+                "valid": True,
+                "iso_date": target.strftime("%Y-%m-%d"),
+                "full_date": target.strftime("%A, %d %B %Y"),
+                "display_date": target.strftime("%A, %d %B %Y"),
+            }
+        except Exception:
+            return None
+
+    local_result = _normalize_date_local()
+    if local_result:
+        return local_result
+
     try:
         response = client.chat.completions.create(
             model=TEMPORAL_MODEL,
@@ -821,45 +880,53 @@ def normalize_human_date_logic(date_text: str, tz: str = "Europe/London") -> Dic
     except Exception as e:
         log_event("Temporal", f"GPT date normalization fallback: {e}")
 
-    normalized = date_text.lower().strip()
-    days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-    today_index = days_of_week.index(now.strftime("%A"))
-
-    for i, day in enumerate(days_of_week):
-        if day.lower() in normalized:
-            days_ahead = (i - today_index) % 7
-            if "next week" in normalized:
-                days_ahead += 7 if days_ahead != 0 else 7
-            elif normalized.startswith("next ") or days_ahead == 0:
-                days_ahead = days_ahead or 7
-
-            target = now + timedelta(days=days_ahead)
-            return {
-                "valid": True,
-                "iso_date": target.strftime("%Y-%m-%d"),
-                "full_date": target.strftime("%A, %d %B %Y"),
-                "display_date": target.strftime("%A, %d %B %Y"),
-            }
-
-    try:
-        from dateutil import parser
-
-        target = parser.parse(date_text, default=now)
-        if target.date() < now.date():
-            target = target.replace(year=target.year + 1)
-        return {
-            "valid": True,
-            "iso_date": target.strftime("%Y-%m-%d"),
-            "full_date": target.strftime("%A, %d %B %Y"),
-            "display_date": target.strftime("%A, %d %B %Y"),
-        }
-    except Exception:
-        return {"valid": False, "error": f"I couldn't understand that date: {date_text}"}
+    return {"valid": False, "error": f"I couldn't understand that date: {date_text}"}
 
 
 def normalize_human_time_logic(time_text: str, tz: str = "Europe/London") -> Dict[str, Any]:
     """Normalize natural-language times like '8pm', 'half past two', or 'morning'."""
     now, now_label = _current_time_context(tz)
+
+    def _normalize_time_local() -> Optional[Dict[str, Any]]:
+        text = time_text.lower().strip().replace(".", "")
+        direct = re.match(r"^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$", text)
+        if direct:
+            hour = int(direct.group(1))
+            minute = int(direct.group(2) or 0)
+            meridiem = direct.group(3)
+            if meridiem == "pm" and hour < 12:
+                hour += 12
+            elif meridiem == "am" and hour == 12:
+                hour = 0
+            if 0 <= hour <= 23 and 0 <= minute <= 59:
+                hour_12 = hour % 12 or 12
+                suffix = "AM" if hour < 12 else "PM"
+                return {
+                    "valid": True,
+                    "time_24h": f"{hour:02d}:{minute:02d}",
+                    "display_time": f"{hour_12}:{minute:02d} {suffix}",
+                }
+
+        broad_times = {
+            "morning": "10:00",
+            "late morning": "11:00",
+            "afternoon": "14:00",
+            "evening": "17:00",
+            "noon": "12:00",
+            "midday": "12:00",
+        }
+        for phrase, normalized_time in broad_times.items():
+            if phrase in text:
+                return {
+                    "valid": True,
+                    "time_24h": normalized_time,
+                    "display_time": normalized_time,
+                }
+        return None
+
+    local_result = _normalize_time_local()
+    if local_result:
+        return local_result
 
     try:
         response = client.chat.completions.create(
@@ -892,39 +959,6 @@ def normalize_human_time_logic(time_text: str, tz: str = "Europe/London") -> Dic
             }
     except Exception as e:
         log_event("Temporal", f"GPT time normalization fallback: {e}")
-
-    text = time_text.lower().strip().replace(".", "")
-    direct = re.match(r"^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$", text)
-    if direct:
-        hour = int(direct.group(1))
-        minute = int(direct.group(2) or 0)
-        meridiem = direct.group(3)
-        if meridiem == "pm" and hour < 12:
-            hour += 12
-        elif meridiem == "am" and hour == 12:
-            hour = 0
-        if 0 <= hour <= 23 and 0 <= minute <= 59:
-            return {
-                "valid": True,
-                "time_24h": f"{hour:02d}:{minute:02d}",
-                "display_time": f"{hour:02d}:{minute:02d}",
-            }
-
-    broad_times = {
-        "morning": "10:00",
-        "late morning": "11:00",
-        "afternoon": "14:00",
-        "evening": "17:00",
-        "noon": "12:00",
-        "midday": "12:00",
-    }
-    for phrase, normalized_time in broad_times.items():
-        if phrase in text:
-            return {
-                "valid": True,
-                "time_24h": normalized_time,
-                "display_time": normalized_time,
-            }
 
     return {"valid": False, "error": f"I couldn't understand that time: {time_text}"}
 
@@ -1018,6 +1052,10 @@ def validate_appointment(date_str: str, time_slot: Optional[str] = None, appoint
 
 @function_tool
 def check_agent_availability() -> Dict[str, Any]:
+    return check_agent_availability_logic()
+
+
+def check_agent_availability_logic() -> Dict[str, Any]:
     """Check if human agents are currently available."""
     try:
         import pytz
@@ -1049,6 +1087,11 @@ def check_agent_availability() -> Dict[str, Any]:
 @function_tool
 def capture_lead(customer_name: str, email: Optional[str] = None, phone: Optional[str] = None,
                  interest_type: Optional[str] = None, vehicle_interest: Optional[str] = None) -> Dict[str, Any]:
+    return capture_lead_logic(customer_name, email, phone, interest_type, vehicle_interest)
+
+
+def capture_lead_logic(customer_name: str, email: Optional[str] = None, phone: Optional[str] = None,
+                       interest_type: Optional[str] = None, vehicle_interest: Optional[str] = None) -> Dict[str, Any]:
     """Capture lead information for follow-up."""
     lead_data = {
         "customer_name": customer_name,
@@ -1072,6 +1115,10 @@ def capture_lead(customer_name: str, email: Optional[str] = None, phone: Optiona
 
 @function_tool
 def extract_entities(conversation_text: str, entity_types: Optional[list[str]] = None) -> Dict[str, Any]:
+    return extract_entities_logic(conversation_text)
+
+
+def extract_entities_logic(conversation_text: str) -> Dict[str, Any]:
     """Extract structured entities from conversation text."""
     entities = {}
     import re
@@ -1123,6 +1170,10 @@ def validate_contact_info(email: Optional[str] = None, phone: Optional[str] = No
 
 @function_tool
 def classify_intent(user_message: str, conversation_context: str = "") -> Dict[str, Any]:
+    return classify_intent_logic(user_message)
+
+
+def classify_intent_logic(user_message: str) -> Dict[str, Any]:
     """Classify user intent from message. Returns intent_id and description."""
     intents_config = load_config("intents.json")
     intents = intents_config.get("intents", [])
@@ -1191,10 +1242,14 @@ def get_form_id_from_intent(intent_id: str) -> Dict[str, Any]:
 
 def load_form_logic(form_id: str) -> Dict[str, Any]:
     """Load form definition from JSON config."""
+    if form_id in _FORM_CACHE:
+        return _FORM_CACHE[form_id]
+
     form_path = os.path.join("configs", "forms", f"{form_id}.json")
     if os.path.exists(form_path):
         with open(form_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            _FORM_CACHE[form_id] = json.load(f)
+            return _FORM_CACHE[form_id]
     return {"error": f"Form {form_id} not found"}
 
 
@@ -1428,6 +1483,10 @@ def get_booking_status_logic(session_id: str) -> str:
 
 @function_tool
 def process_booking_step(user_input: str) -> Dict[str, Any]:
+    return process_booking_step_logic(user_input)
+
+
+def process_booking_step_logic(user_input: str) -> Dict[str, Any]:
     """
     Process one step of the booking flow.
     Handles validation, state update, and next question generation.
@@ -1561,6 +1620,46 @@ def process_booking_step(user_input: str) -> Dict[str, Any]:
         error_msg = f"Error in process_booking_step: {str(e)}\n{traceback.format_exc()}"
         log_event("Booking", error_msg)
         return {"message": "Technical error processing booking.", "status": "error"}
+
+
+def run_handoff_logic(user_input: str, session_id: str = "car_dealer_session_v2") -> str:
+    """Deterministic handoff flow without an extra LLM round-trip."""
+    state = _HANDOFF_STATE.get(session_id)
+
+    if not state:
+        availability = check_agent_availability_logic()
+        _HANDOFF_STATE[session_id] = {"awaiting_details": True}
+        log_event("Handoff", f"Availability checked: {availability['available']}")
+        if availability["available"]:
+            return "An agent is available. Please provide your name and phone number so we can connect you."
+        return "Our agents are currently offline. Please leave your name and phone number and we'll contact you."
+
+    entities = extract_entities_logic(user_input).get("entities", {})
+    phone = entities.get("phone")
+    email = entities.get("email")
+    name = user_input.strip()
+    if phone:
+        name = name.replace(phone, "").strip(" ,-")
+    if email:
+        name = name.replace(email, "").strip(" ,-")
+
+    if phone or (name and len(name.split()) >= 1 and len(name) > 2):
+        capture_lead_logic(
+            customer_name=name or "Customer",
+            email=email,
+            phone=phone,
+            interest_type="human_handoff",
+        )
+        _HANDOFF_STATE.pop(session_id, None)
+        return "Thank you. Your details have been passed to our team."
+
+    return "Please provide your name and phone number."
+
+
+def run_booking_logic(user_input: str) -> str:
+    """Run booking form step directly and return the user-facing message."""
+    result = process_booking_step_logic(user_input)
+    return result.get("message", "Sorry, I couldn't process that booking step.")
 
 
 # =================== AGENT FACTORY (6 Core Agents) ===================
@@ -1729,6 +1828,7 @@ async def async_run_orchestrator(
     verbose: bool = True,
 ):
     AGENT_LOG.clear()
+    session_id = "car_dealer_session_v2"
     
     # Layer 1: Set dealer context and pre-load KB
     if dealer_name:
@@ -1750,81 +1850,33 @@ async def async_run_orchestrator(
         dealer_display = dealer_name if dealer_name else "our dealership"
         return f"Hi there! I'm your {dealer_display} assistant. How can I help you today?", list(AGENT_LOG)
 
-    agents = build_agents(orgName=orgName, tz=tz, language=language, dealer_name=dealer_name)
-    session = SQLiteSession(
-        session_id="car_dealer_session_v2",
-        db_path="car_dealer_memory_v2.sqlite",
-    )
-
     log_event("System", f"Starting orchestrator run (dealer: {dealer_name})")
 
-    # 3. Intent Classification (Lightweight LLM)
-    # We pass the user input to the Intent Agent to get structured classification
-    intent_result = await Runner.run(
-        agents["intent"],
-        user_input,
-        session=session,
-    )
-    
-    try:
-        # Extract JSON from Intent Agent response
-        # It might be wrapped in markdown code blocks
-        intent_output = getattr(intent_result, "final_output", str(intent_result))
-        clean_json = intent_output.replace("```json", "").replace("```", "").strip()
-        intent_data = json.loads(clean_json)
-        intent_id = intent_data.get("intent_id", "general_enquiry")
-        form_id = intent_data.get("form_id")
-        log_event("Orchestrator", f"Classified intent: {intent_id}, form_id: {form_id}")
-    except Exception as e:
-        log_event("Orchestrator", f"Intent parsing failed: {e}. Defaulting to general_enquiry")
-        intent_id = "general_enquiry"
-        form_id = None
-
-    # 3. Routing Logic
-    target_agent = None
-    
-    # Check if we are already in a booking flow
-    current_status = get_booking_status_logic("car_dealer_session_v2")
+    current_status = get_booking_status_logic(session_id)
     is_booking_active = current_status in ["in_progress", "confirming"]
-    
-    # Priority Routing for Active Booking
+    intent_data = classify_intent_logic(user_input)
+    intent_id = intent_data.get("intent_id", "general_enquiry")
+    form_id = intent_data.get("form")
+    log_event("Orchestrator", f"Classified intent: {intent_id}, form_id: {form_id}")
+
     if is_booking_active:
         if intent_id == "human_handoff":
-            target_agent = agents["handoff"]
+            final = run_handoff_logic(user_input, session_id=session_id)
         else:
-            # Default to booking agent to continue flow
-            # Even if intent is general_enquiry, it's likely an answer to a form question
-            target_agent = agents["booking"]
-            
-    # Standard Routing
+            final = run_booking_logic(user_input)
     elif intent_id in ["service_booking", "test_drive"]:
-        # New booking
         if not form_id:
             form_res = get_form_id_from_intent_logic(intent_id)
             form_id = form_res.get("form_id", "service_booking")
-        
+        _HANDOFF_STATE.pop(session_id, None)
         init_booking_logic(form_id)
-        target_agent = agents["booking"]
-        
+        final = run_booking_logic(user_input)
     elif intent_id == "human_handoff":
-        target_agent = agents["handoff"]
-        
+        final = run_handoff_logic(user_input, session_id=session_id)
     else:
-        # general_enquiry / date_time_query: deterministic RAG is more reliable
-        # than relying on the Knowledge Agent to call semantic_search every time.
         final = answer_knowledge_query_logic(user_input, dealer_name=dealer_name)
-        final_validated = validate_output_for_dealer_isolation(final, dealer_name)
-        log_event("System", "Orchestration complete")
-        return final_validated, list(AGENT_LOG)
 
-    # 4. Run Target Agent
-    final_response = await Runner.run(target_agent, user_input, session=session)
-
-    final = getattr(final_response, "final_output", str(final_response))
-    
-    # Layer 3: Output validation guardrail
     final_validated = validate_output_for_dealer_isolation(final, dealer_name)
-    
     log_event("System", "Orchestration complete")
     return final_validated, list(AGENT_LOG)
 
